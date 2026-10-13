@@ -1,13 +1,17 @@
-
 [
   {
     "name": "Cisco-R1",
-    "host": "192.0.2.10",
+    "host": "192.168.234.200",
     "device_type": "cisco_ios"
   },
   {
-    "name": "Juniper-R1",
-    "host": "192.0.2.20",
-    "device_type": "juniper_junos"
+    "name": "Cisco-R2",
+    "host": "192.168.234.201",
+    "device_type": "cisco_ios"
+  },
+  {
+    "name": "Cisco-R3",
+    "host": "192.168.234.202",
+    "device_type": "cisco_ios"
   }
 ]
