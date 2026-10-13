@@ -53,7 +53,7 @@ def initialize_git():
 
 
 def load_inventory():
-    """Doc danh sach thiet bi tu inventory.json."""
+    """Doc va kiem tra danh sach thiet bi tu inventory.json."""
     with open(INVENTORY_FILE, "r", encoding="utf-8") as file:
         devices = json.load(file)
 
@@ -66,9 +66,7 @@ def load_inventory():
 
         for field in ("name", "host", "device_type"):
             if not device.get(field):
-                raise ValueError(
-                    f"Thiet bi thieu truong {field}: {device}"
-                )
+                raise ValueError(f"Thiet bi thieu truong {field}: {device}")
 
     return devices
 
@@ -78,12 +76,9 @@ def get_demo_config(device):
     config_file = DEMO_DIR / f"{safe_name(device['name'])}.cfg"
 
     if not config_file.is_file():
-        raise FileNotFoundError(
-            f"Khong tim thay file cau hinh mau: {config_file}"
-        )
+        raise FileNotFoundError(f"Khong tim thay file cau hinh mau: {config_file}")
 
     config = config_file.read_text(encoding="utf-8")
-
     if not config.strip():
         raise ValueError(f"File cau hinh mau rong: {config_file}")
 
@@ -99,9 +94,7 @@ def get_live_config(device, username, password):
     elif device_type.startswith("cisco_"):
         command = "show running-config"
     else:
-        raise ValueError(
-            f"Device type chua duoc ho tro: {device_type}"
-        )
+        raise ValueError(f"Device type chua duoc ho tro: {device_type}")
 
     connection_params = {
         "device_type": device_type,
@@ -115,13 +108,8 @@ def get_live_config(device, username, password):
     }
 
     connection = ConnectHandler(**connection_params)
-
     try:
-        output = connection.send_command(
-            command,
-            read_timeout=60,
-        )
-
+        output = connection.send_command(command, read_timeout=60)
         if not output.strip():
             raise RuntimeError("Thiet bi tra ve cau hinh rong.")
 
@@ -130,14 +118,10 @@ def get_live_config(device, username, password):
             "% Authorization failed",
             "error: syntax error",
         )
-
         if any(marker in output for marker in error_markers):
-            raise RuntimeError(
-                "Lenh lay cau hinh co the da that bai."
-            )
+            raise RuntimeError("Lenh lay cau hinh co the da that bai.")
 
         return output.rstrip() + "\n"
-
     finally:
         connection.disconnect()
 
@@ -161,7 +145,6 @@ def get_linux_info(host, username, password):
 
     if not hostname.strip():
         raise RuntimeError("Khong lay duoc hostname.")
-
     if not system_info.strip():
         raise RuntimeError("Khong lay duoc thong tin he thong.")
 
@@ -174,9 +157,11 @@ def get_linux_info(host, username, password):
 
 
 def save_config(device, config, mode):
-    """Luu noi dung va doc lai ban cu neu co."""
+    """Doc ban backup cu truoc khi ghi ban moi."""
     if mode == "demo":
         vendor = "demo"
+    elif mode == "linux-test":
+        vendor = "linux"
     else:
         vendor = device["device_type"].split("_")[0]
 
@@ -185,19 +170,14 @@ def save_config(device, config, mode):
 
     filename = f"{safe_name(device['name'])}.cfg"
     file_path = device_dir / filename
-
-    old_config = (
-        file_path.read_text(encoding="utf-8")
-        if file_path.exists()
-        else None
-    )
+    old_config = file_path.read_text(encoding="utf-8") if file_path.exists() else None
 
     file_path.write_text(config, encoding="utf-8")
     return file_path, old_config
 
 
 def show_diff(old_config, new_config, filename):
-    """So sanh noi dung cu va moi."""
+    """So sanh noi dung backup cu va moi."""
     if old_config is None:
         print("Lan dau sao luu: chua co ban cu de so sanh.")
         return True
@@ -221,11 +201,11 @@ def show_diff(old_config, new_config, filename):
 
 
 def commit_backups():
-    """Commit cac file backup neu co thay doi trong staging."""
-    run_git("add", "--", "backups/")
+    """Chi commit cac thay doi trong thu muc backups/."""
+    run_git("add", "-A", "--", "backups/")
 
     result = subprocess.run(
-        ["git", "diff", "--cached", "--quiet"],
+        ["git", "diff", "--cached", "--quiet", "--", "backups/"],
         cwd=BASE_DIR,
         capture_output=True,
         text=True,
@@ -233,21 +213,16 @@ def commit_backups():
     )
 
     if result.returncode == 0:
-        print("Git: khong co thay doi moi.")
+        print("Git: khong co thay doi backup moi.")
         return
 
     if result.returncode != 1:
-        raise RuntimeError("Khong the kiem tra thay doi Git.")
+        detail = result.stderr.strip() or "Khong ro nguyen nhan."
+        raise RuntimeError(f"Khong the kiem tra thay doi Git: {detail}")
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    run_git(
-        "commit",
-        "-m",
-        f"Network backup {timestamp}",
-    )
-
-    print("Git: da commit cau hinh thay doi.")
+    run_git("commit", "-m", f"Network backup {timestamp}", "--", "backups/")
+    print("Git: da commit cac thay doi backup.")
 
 
 def run_linux_test(host):
@@ -260,35 +235,17 @@ def run_linux_test(host):
         return
 
     print(f"\nDang ket noi SSH den Linux: {host}...")
-
     try:
-        # Chi luu file sau khi ket noi va thu thap thong tin thanh cong.
         config = get_linux_info(host, username, password)
-
-        device = {
-            "name": "Lubuntu",
-            "host": host,
-            "device_type": "linux",
-        }
-
-        file_path, old_config = save_config(
-            device,
-            config,
-            "live",
-        )
+        device = {"name": "Lubuntu", "host": host, "device_type": "linux"}
+        file_path, old_config = save_config(device, config, "linux-test")
 
         changed = show_diff(
             old_config,
             config,
             str(file_path.relative_to(BASE_DIR)),
         )
-
-        logging.info(
-            "LINUX_TEST host=%s changed=%s",
-            host,
-            changed,
-        )
-
+        logging.info("LINUX_TEST host=%s changed=%s", host, changed)
         print(f"\nDa luu: {file_path.relative_to(BASE_DIR)}")
 
         try:
@@ -297,7 +254,6 @@ def run_linux_test(host):
             logging.exception("Git commit failed during Linux test")
             print(f"LOI GIT: Khong the commit backup: {git_error}")
             print("Hay kiem tra git status va cau hinh Git user.")
-
     except Exception as error:
         logging.exception("Linux SSH test failed: host=%s", host)
         print("\nKIEM THU THAT BAI: Khong the ket noi hoac thu thap thong tin Linux.")
@@ -309,37 +265,25 @@ def run_backup(mode, devices, username=None, password=None):
     """Chay quy trinh backup cho danh sach thiet bi."""
     success_count = 0
     failed_count = 0
-
     print(f"\nChe do: {mode.upper()}")
 
     for device in devices:
         name = device["name"]
         host = device["host"]
-
         print(f"\nDang sao luu {name} ({host})...")
 
         try:
             if mode == "demo":
                 config = get_demo_config(device)
             else:
-                config = get_live_config(
-                    device,
-                    username,
-                    password,
-                )
+                config = get_live_config(device, username, password)
 
-            file_path, old_config = save_config(
-                device,
-                config,
-                mode,
-            )
-
+            file_path, old_config = save_config(device, config, mode)
             changed = show_diff(
                 old_config,
                 config,
                 str(file_path.relative_to(BASE_DIR)),
             )
-
             logging.info(
                 "SUCCESS mode=%s device=%s host=%s changed=%s",
                 mode,
@@ -347,17 +291,10 @@ def run_backup(mode, devices, username=None, password=None):
                 host,
                 changed,
             )
-
             print(f"Da luu: {file_path.relative_to(BASE_DIR)}")
             success_count += 1
-
         except Exception as error:
-            logging.exception(
-                "FAILED mode=%s device=%s host=%s",
-                mode,
-                name,
-                host,
-            )
+            logging.exception("FAILED mode=%s device=%s host=%s", mode, name, host)
             print(f"LOI {name}: {error}")
             failed_count += 1
 
@@ -375,24 +312,18 @@ def run_backup(mode, devices, username=None, password=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Network Backup and Inventory"
-    )
-
+    parser = argparse.ArgumentParser(description="Network Backup and Inventory")
     parser.add_argument(
         "--mode",
         choices=["demo", "live", "linux-test"],
         default="demo",
-        help="demo: file mau; live: Cisco/Juniper; "
-             "linux-test: kiem tra Linux qua SSH",
+        help="demo: file mau; live: Cisco/Juniper; linux-test: kiem tra Linux qua SSH",
     )
-
     parser.add_argument(
         "--host",
         default="192.168.234.131",
         help="IP cua may Linux dung de kiem thu SSH",
     )
-
     args = parser.parse_args()
 
     initialize_git()
@@ -402,23 +333,16 @@ def main():
         return
 
     devices = load_inventory()
-
     username = None
     password = None
 
     if args.mode == "live":
         username = input("SSH username: ").strip()
         password = getpass("SSH password: ")
-
         if not username or not password:
             raise ValueError("Username va password khong duoc de trong.")
 
-    run_backup(
-        args.mode,
-        devices,
-        username,
-        password,
-    )
+    run_backup(args.mode, devices, username, password)
 
 
 if __name__ == "__main__":
