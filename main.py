@@ -1,4 +1,3 @@
-
 import argparse
 import json
 import logging
@@ -257,38 +256,53 @@ def run_linux_test(host):
     password = getpass("SSH password: ")
 
     if not username or not password:
-        raise ValueError("Username va password khong duoc de trong.")
+        print("Kiem thu that bai: Username va password khong duoc de trong.")
+        return
 
     print(f"\nDang ket noi SSH den Linux: {host}...")
 
-    config = get_linux_info(host, username, password)
+    try:
+        # Chi luu file sau khi ket noi va thu thap thong tin thanh cong.
+        config = get_linux_info(host, username, password)
 
-    device = {
-        "name": "Lubuntu",
-        "host": host,
-        "device_type": "linux",
-    }
+        device = {
+            "name": "Lubuntu",
+            "host": host,
+            "device_type": "linux",
+        }
 
-    file_path, old_config = save_config(
-        device,
-        config,
-        "live",
-    )
+        file_path, old_config = save_config(
+            device,
+            config,
+            "live",
+        )
 
-    changed = show_diff(
-        old_config,
-        config,
-        str(file_path.relative_to(BASE_DIR)),
-    )
+        changed = show_diff(
+            old_config,
+            config,
+            str(file_path.relative_to(BASE_DIR)),
+        )
 
-    logging.info(
-        "LINUX_TEST host=%s changed=%s",
-        host,
-        changed,
-    )
+        logging.info(
+            "LINUX_TEST host=%s changed=%s",
+            host,
+            changed,
+        )
 
-    print(f"\nDa luu: {file_path.relative_to(BASE_DIR)}")
-    commit_backups()
+        print(f"\nDa luu: {file_path.relative_to(BASE_DIR)}")
+
+        try:
+            commit_backups()
+        except Exception as git_error:
+            logging.exception("Git commit failed during Linux test")
+            print(f"LOI GIT: Khong the commit backup: {git_error}")
+            print("Hay kiem tra git status va cau hinh Git user.")
+
+    except Exception as error:
+        logging.exception("Linux SSH test failed: host=%s", host)
+        print("\nKIEM THU THAT BAI: Khong the ket noi hoac thu thap thong tin Linux.")
+        print(f"Chi tiet: {error}")
+        print("Khong tao ban backup moi tu lan ket noi that bai.")
 
 
 def run_backup(mode, devices, username=None, password=None):
