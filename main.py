@@ -30,12 +30,12 @@ logging.basicConfig(
 
 
 def safe_name(name):
-    """Loại bỏ ký tự không phù hợp trong tên file."""
+    """Loai bo ky tu khong phu hop trong ten file."""
     return re.sub(r"[^a-zA-Z0-9_.-]", "_", name)
 
 
 def run_git(*args):
-    """Chạy lệnh Git trong thư mục dự án."""
+    """Chay lenh Git trong thu muc du an."""
     return subprocess.run(
         ["git", *args],
         cwd=BASE_DIR,
@@ -47,14 +47,14 @@ def run_git(*args):
 
 
 def initialize_git():
-    """Khởi tạo Git nếu dự án chưa có repository."""
+    """Khoi tao Git neu repository chua ton tai."""
     if not (BASE_DIR / ".git").exists():
         run_git("init")
         print("Da khoi tao Git repository.")
 
 
 def load_inventory():
-    """Đọc danh sách thiết bị từ inventory.json."""
+    """Doc danh sach thiet bi tu inventory.json."""
     with open(INVENTORY_FILE, "r", encoding="utf-8") as file:
         devices = json.load(file)
 
@@ -62,6 +62,9 @@ def load_inventory():
         raise ValueError("Inventory phai la mot danh sach JSON.")
 
     for device in devices:
+        if not isinstance(device, dict):
+            raise ValueError("Moi thiet bi phai la mot JSON object.")
+
         for field in ("name", "host", "device_type"):
             if not device.get(field):
                 raise ValueError(
@@ -72,7 +75,7 @@ def load_inventory():
 
 
 def get_demo_config(device):
-    """Đọc cấu hình mẫu, không kết nối SSH."""
+    """Doc cau hinh mau, khong ket noi SSH."""
     config_file = DEMO_DIR / f"{safe_name(device['name'])}.cfg"
 
     if not config_file.is_file():
@@ -89,7 +92,7 @@ def get_demo_config(device):
 
 
 def get_live_config(device, username, password):
-    """Kết nối thiết bị thật bằng Netmiko và lấy cấu hình."""
+    """Lay cau hinh tu thiet bi Cisco hoac Juniper."""
     device_type = device["device_type"]
 
     if device_type == "juniper_junos":
@@ -115,7 +118,10 @@ def get_live_config(device, username, password):
     connection = ConnectHandler(**connection_params)
 
     try:
-        output = connection.send_command(command, read_timeout=60)
+        output = connection.send_command(
+            command,
+            read_timeout=60,
+        )
 
         if not output.strip():
             raise RuntimeError("Thiet bi tra ve cau hinh rong.")
@@ -137,8 +143,39 @@ def get_live_config(device, username, password):
         connection.disconnect()
 
 
+def get_linux_info(host, username, password):
+    """Ket noi SSH den Linux va thu thap thong tin he thong."""
+    connection_params = {
+        "device_type": "linux",
+        "host": host,
+        "username": username,
+        "password": password,
+        "conn_timeout": 10,
+        "auth_timeout": 10,
+        "banner_timeout": 15,
+    }
+
+    with ConnectHandler(**connection_params) as connection:
+        hostname = connection.send_command("hostname")
+        system_info = connection.send_command("uname -a")
+        ip_addresses = connection.send_command("hostname -I")
+
+    if not hostname.strip():
+        raise RuntimeError("Khong lay duoc hostname.")
+
+    if not system_info.strip():
+        raise RuntimeError("Khong lay duoc thong tin he thong.")
+
+    return (
+        f"Hostname: {hostname.strip()}\n"
+        f"Host: {host}\n"
+        f"System: {system_info.strip()}\n"
+        f"IP addresses: {ip_addresses.strip()}\n"
+    )
+
+
 def save_config(device, config, mode):
-    """Lưu cấu hình và trả về bản cũ nếu đã tồn tại."""
+    """Luu noi dung va doc lai ban cu neu co."""
     if mode == "demo":
         vendor = "demo"
     else:
@@ -161,7 +198,7 @@ def save_config(device, config, mode):
 
 
 def show_diff(old_config, new_config, filename):
-    """So sánh cấu hình cũ và mới."""
+    """So sanh noi dung cu va moi."""
     if old_config is None:
         print("Lan dau sao luu: chua co ban cu de so sanh.")
         return True
@@ -180,12 +217,12 @@ def show_diff(old_config, new_config, filename):
         print("\n".join(diff))
         return True
 
-    print("Khong phat hien thay doi cau hinh.")
+    print("Khong phat hien thay doi.")
     return False
 
 
 def commit_backups():
-    """Commit các file backup khi có thay đổi."""
+    """Commit cac file backup neu co thay doi trong staging."""
     run_git("add", "--", "backups/")
 
     result = subprocess.run(
@@ -214,36 +251,52 @@ def commit_backups():
     print("Git: da commit cau hinh thay doi.")
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Network Backup and Inventory"
+def run_linux_test(host):
+    """Kiem tra SSH Linux, luu thong tin va so sanh diff."""
+    username = input("SSH username: ").strip()
+    password = getpass("SSH password: ")
+
+    if not username or not password:
+        raise ValueError("Username va password khong duoc de trong.")
+
+    print(f"\nDang ket noi SSH den Linux: {host}...")
+
+    config = get_linux_info(host, username, password)
+
+    device = {
+        "name": "Lubuntu",
+        "host": host,
+        "device_type": "linux",
+    }
+
+    file_path, old_config = save_config(
+        device,
+        config,
+        "live",
     )
-    parser.add_argument(
-        "--mode",
-        choices=["demo", "live"],
-        default="demo",
-        help="demo: dung file mau; live: ket noi thiet bi qua SSH",
+
+    changed = show_diff(
+        old_config,
+        config,
+        str(file_path.relative_to(BASE_DIR)),
     )
-    args = parser.parse_args()
-    mode = args.mode
 
-    initialize_git()
-    devices = load_inventory()
+    logging.info(
+        "LINUX_TEST host=%s changed=%s",
+        host,
+        changed,
+    )
 
-    username = None
-    password = None
+    print(f"\nDa luu: {file_path.relative_to(BASE_DIR)}")
+    commit_backups()
 
-    if mode == "live":
-        username = input("SSH username: ").strip()
-        password = getpass("SSH password: ")
 
-        if not username or not password:
-            raise ValueError("Username va password khong duoc de trong.")
-
-    print(f"\nChe do: {mode.upper()}")
-
+def run_backup(mode, devices, username=None, password=None):
+    """Chay quy trinh backup cho danh sach thiet bi."""
     success_count = 0
     failed_count = 0
+
+    print(f"\nChe do: {mode.upper()}")
 
     for device in devices:
         name = device["name"]
@@ -255,9 +308,17 @@ def main():
             if mode == "demo":
                 config = get_demo_config(device)
             else:
-                config = get_live_config(device, username, password)
+                config = get_live_config(
+                    device,
+                    username,
+                    password,
+                )
 
-            file_path, old_config = save_config(device, config, mode)
+            file_path, old_config = save_config(
+                device,
+                config,
+                mode,
+            )
 
             changed = show_diff(
                 old_config,
@@ -297,6 +358,53 @@ def main():
     print(f"Thanh cong: {success_count}")
     print(f"That bai:   {failed_count}")
     print(f"Tong cong:  {len(devices)}")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Network Backup and Inventory"
+    )
+
+    parser.add_argument(
+        "--mode",
+        choices=["demo", "live", "linux-test"],
+        default="demo",
+        help="demo: file mau; live: Cisco/Juniper; "
+             "linux-test: kiem tra Linux qua SSH",
+    )
+
+    parser.add_argument(
+        "--host",
+        default="192.168.234.131",
+        help="IP cua may Linux dung de kiem thu SSH",
+    )
+
+    args = parser.parse_args()
+
+    initialize_git()
+
+    if args.mode == "linux-test":
+        run_linux_test(args.host)
+        return
+
+    devices = load_inventory()
+
+    username = None
+    password = None
+
+    if args.mode == "live":
+        username = input("SSH username: ").strip()
+        password = getpass("SSH password: ")
+
+        if not username or not password:
+            raise ValueError("Username va password khong duoc de trong.")
+
+    run_backup(
+        args.mode,
+        devices,
+        username,
+        password,
+    )
 
 
 if __name__ == "__main__":
