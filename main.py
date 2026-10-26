@@ -3,17 +3,19 @@ import json
 import logging
 import re
 import subprocess
+from dotenv import load_dotenv
 from datetime import datetime
 from difflib import unified_diff
 from getpass import getpass
 from pathlib import Path
-
+import os
+import requests
 from netmiko import ConnectHandler
 from netmiko.exceptions import (
     NetmikoAuthenticationException,
     NetmikoTimeoutException,
 )
-
+load_dotenv()
 
 # =========================================================
 # 1. CAU HINH DUONG DAN
@@ -434,7 +436,16 @@ def run_linux_test(host):
 # =========================================================
 
 def run_backup(mode, devices, username=None, password=None):
-    """Chay quy trinh backup cho danh sach thiet bi."""
+    """Chạy backup, ưu tiên thông tin SSH được cấu hình trong .env."""
+    if mode == "live":
+        username = username or os.getenv("SSH_USERNAME")
+        password = password or os.getenv("SSH_PASSWORD")
+
+        if not username or not password:
+            raise ValueError(
+                "Chưa cấu hình SSH_USERNAME hoặc SSH_PASSWORD trong .env."
+            )
+
     success_count = 0
     failed_count = 0
 
@@ -560,8 +571,12 @@ def main():
     password = None
 
     if args.mode == "live":
-        username = input("Tên đăng nhập SSH: ").strip()
-        password = getpass("Mật khẩu SSH: ")
+        username = os.getenv("SSH_USERNAME")
+        password = os.getenv("SSH_PASSWORD")
+
+        if not username or not password:
+            username = input("Tên đăng nhập SSH: ").strip()
+            password = getpass("Mật khẩu SSH: ")
 
         if not username or not password:
             raise ValueError(

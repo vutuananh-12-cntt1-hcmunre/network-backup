@@ -9,6 +9,8 @@
 </head>
 <body>
 <div class="app">
+
+    <!-- SIDEBAR -->
     <aside class="sidebar">
         <div class="brand">
             <div class="brand-icon">N</div>
@@ -51,7 +53,10 @@
         </div>
     </aside>
 
+    <!-- MAIN -->
     <main class="main">
+
+        <!-- TOPBAR -->
         <header class="topbar">
             <div>
                 <p class="breadcrumb">
@@ -67,8 +72,9 @@
 
         <div id="error-message" class="error-message" role="alert" hidden></div>
 
-        <!-- DASHBOARD -->
+        <!-- ==================== DASHBOARD ==================== -->
         <section class="page active" id="page-dashboard">
+
             <div class="welcome">
                 <div>
                     <p class="eyebrow">NETWORK OPERATIONS CENTER</p>
@@ -78,7 +84,6 @@
                 <div class="welcome-icon">⌁</div>
             </div>
 
-            <!-- Thống kê tổng quan -->
             <div class="stats-grid">
                 <article class="stat-card">
                     <div class="stat-top">
@@ -117,7 +122,6 @@
                 </article>
             </div>
 
-            <!-- Danh sách thiết bị và lịch sử Git -->
             <div class="content-grid">
                 <section class="panel">
                     <div class="panel-heading">
@@ -134,17 +138,19 @@
                     <div class="table-wrap">
                         <table>
                             <thead>
-                            <tr>
-                                <th>Thiết bị</th>
-                                <th>Địa chỉ IP</th>
-                                <th>Loại thiết bị</th>
-                                <th>Backup</th>
-                            </tr>
+                                <tr>
+                                    <th>Thiết bị</th>
+                                    <th>Địa chỉ IP</th>
+                                    <th>Loại thiết bị</th>
+                                    <th>Backup</th>
+                                </tr>
                             </thead>
                             <tbody id="dashboard-devices">
-                            <tr>
-                                <td colspan="4" class="empty">Đang tải dữ liệu...</td>
-                            </tr>
+                                <tr>
+                                    <td colspan="4" class="empty">
+                                        Đang tải dữ liệu...
+                                    </td>
+                                </tr>
                             </tbody>
                         </table>
                     </div>
@@ -169,39 +175,99 @@
             </div>
         </section>
 
-        <!-- DEVICES -->
+        <!-- ==================== DEVICES ==================== -->
         <section class="page" id="page-devices">
+
             <div class="section-intro">
                 <div>
                     <h2>Danh sách thiết bị</h2>
-                    <p>Dữ liệu đọc từ inventory.json và thư mục backups.</p>
+                    <p>Quản lý thiết bị trong Inventory và phát hiện router từ GNS3.</p>
                 </div>
+
+                <button
+                    class="btn btn-primary"
+                    id="gns3-discover-btn"
+                    type="button">
+                    🔍 Phát hiện thiết bị GNS3
+                </button>
             </div>
 
-            <section class="panel">
+            <!-- GNS3 DISCOVERY -->
+            <section class="panel" id="gns3-discovery-panel" hidden>
+                <div class="panel-heading">
+                    <div>
+                        <h3>Kết quả phát hiện GNS3</h3>
+                        <p id="gns3-discovery-message" role="status">
+                            Chưa thực hiện phát hiện.
+                        </p>
+                    </div>
+                </div>
+
                 <div class="table-wrap">
                     <table>
                         <thead>
-                        <tr>
-                            <th>Tên thiết bị</th>
-                            <th>Địa chỉ IP</th>
-                            <th>Loại</th>
-                            <th>Trạng thái file backup</th>
-                            <th>Cập nhật file</th>
-                        </tr>
+                            <tr>
+                                <th>Tên node</th>
+                                <th>Loại node</th>
+                                <th>Trạng thái</th>
+                                <th>Inventory</th>
+                                <th>Thao tác</th>
+                            </tr>
                         </thead>
+
+                        <tbody id="gns3-discovery-results">
+                            <tr>
+                                <td colspan="5" class="empty">
+                                    Nhấn nút để phát hiện thiết bị GNS3.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <p class="form-note">
+                    Node mới cần được xác nhận IP quản trị và loại thiết bị
+                    trước khi thêm vào Inventory. Việc phát hiện node không
+                    tự động xác định được IP quản trị.
+                </p>
+            </section>
+
+            <!-- INVENTORY DEVICE LIST -->
+            <section class="panel">
+                <div class="panel-heading">
+                    <div>
+                        <h3>Thiết bị trong Inventory</h3>
+                        <p>Danh sách thiết bị đã đăng ký trong inventory.json.</p>
+                    </div>
+                </div>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Tên thiết bị</th>
+                                <th>Địa chỉ IP</th>
+                                <th>Loại</th>
+                                <th>Trạng thái file backup</th>
+                                <th>Cập nhật file</th>
+                            </tr>
+                        </thead>
+
                         <tbody id="all-devices">
-                        <tr>
-                            <td colspan="5" class="empty">Đang tải dữ liệu...</td>
-                        </tr>
+                            <tr>
+                                <td colspan="5" class="empty">
+                                    Đang tải dữ liệu...
+                                </td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
             </section>
         </section>
 
-        <!-- BACKUPS -->
+        <!-- ==================== BACKUPS ==================== -->
         <section class="page" id="page-backups">
+
             <div class="section-intro">
                 <div>
                     <h2>Quản lý bản sao lưu</h2>
@@ -215,6 +281,7 @@
                         <h3>Chạy Live Backup</h3>
                         <p>Kết nối SSH đến các thiết bị trong inventory.json.</p>
                     </div>
+
                     <span id="backup-status-pill" class="pill">Chưa chạy</span>
                 </div>
 
@@ -227,8 +294,7 @@
                             type="text"
                             autocomplete="username"
                             placeholder="Nhập tài khoản SSH"
-                            required
-                        >
+                            required>
                     </div>
 
                     <div class="form-field">
@@ -239,16 +305,14 @@
                             type="password"
                             autocomplete="current-password"
                             placeholder="Nhập mật khẩu SSH"
-                            required
-                        >
+                            required>
                     </div>
 
                     <div class="backup-actions">
                         <button
                             type="submit"
                             class="btn btn-primary"
-                            id="start-backup-btn"
-                        >
+                            id="start-backup-btn">
                             ▶ Bắt đầu Live Backup
                         </button>
                     </div>
@@ -295,8 +359,14 @@
                     <pre id="backup-output" class="backup-output">Chưa có lượt backup nào được thực hiện.</pre>
 
                     <div class="backup-times">
-                        <p>Thời điểm bắt đầu: <span id="backup-started-at">—</span></p>
-                        <p>Thời điểm kết thúc: <span id="backup-finished-at">—</span></p>
+                        <p>
+                            Thời điểm bắt đầu:
+                            <span id="backup-started-at">—</span>
+                        </p>
+                        <p>
+                            Thời điểm kết thúc:
+                            <span id="backup-finished-at">—</span>
+                        </p>
                     </div>
                 </section>
             </section>
@@ -312,29 +382,36 @@
                 <div class="table-wrap">
                     <table>
                         <thead>
-                        <tr>
-                            <th>Thiết bị</th>
-                            <th>Đường dẫn file</th>
-                            <th>Thời gian sửa file</th>
-                            <th>Trạng thái</th>
-                        </tr>
+                            <tr>
+                                <th>Thiết bị</th>
+                                <th>Đường dẫn file</th>
+                                <th>Thời gian sửa file</th>
+                                <th>Trạng thái</th>
+                            </tr>
                         </thead>
+
                         <tbody id="backup-devices">
-                        <tr>
-                            <td colspan="4" class="empty">Đang tải dữ liệu...</td>
-                        </tr>
+                            <tr>
+                                <td colspan="4" class="empty">
+                                    Đang tải dữ liệu...
+                                </td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
             </section>
         </section>
 
-        <!-- SYSTEM LOGS -->
+        <!-- ==================== SYSTEM LOGS ==================== -->
         <section class="page" id="page-logs">
+
             <div class="section-intro">
                 <div>
                     <h2>Nhật ký hệ thống</h2>
-                    <p>Theo dõi hoạt động backup và các thông báo INFO, WARNING, ERROR từ backup.log.</p>
+                    <p>
+                        Theo dõi hoạt động backup và các thông báo
+                        INFO, WARNING, ERROR từ backup.log.
+                    </p>
                 </div>
             </div>
 
@@ -345,7 +422,10 @@
                         <p id="logs-summary">Đang tải nhật ký...</p>
                     </div>
 
-                    <button class="btn btn-secondary" id="logs-refresh-btn" type="button">
+                    <button
+                        class="btn btn-secondary"
+                        id="logs-refresh-btn"
+                        type="button">
                         ↻ Làm mới nhật ký
                     </button>
                 </div>
@@ -366,11 +446,13 @@
                         <input
                             id="logs-search"
                             type="search"
-                            placeholder="Nhập từ khóa cần tìm..."
-                        >
+                            placeholder="Nhập từ khóa cần tìm...">
                     </div>
 
-                    <button class="btn btn-primary" id="logs-search-btn" type="button">
+                    <button
+                        class="btn btn-primary"
+                        id="logs-search-btn"
+                        type="button">
                         Tìm kiếm
                     </button>
                 </div>
@@ -384,16 +466,19 @@
                 <div class="table-wrap logs-table-wrap">
                     <table class="logs-table">
                         <thead>
-                        <tr>
-                            <th>Thời gian</th>
-                            <th>Mức độ</th>
-                            <th>Nội dung</th>
-                        </tr>
+                            <tr>
+                                <th>Thời gian</th>
+                                <th>Mức độ</th>
+                                <th>Nội dung</th>
+                            </tr>
                         </thead>
+
                         <tbody id="logs-table-body">
-                        <tr>
-                            <td colspan="3" class="empty">Đang tải nhật ký...</td>
-                        </tr>
+                            <tr>
+                                <td colspan="3" class="empty">
+                                    Đang tải nhật ký...
+                                </td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
@@ -406,8 +491,7 @@
                             class="btn btn-secondary"
                             id="logs-prev-btn"
                             type="button"
-                            disabled
-                        >
+                            disabled>
                             ← Trước
                         </button>
 
@@ -415,21 +499,22 @@
                             class="btn btn-secondary"
                             id="logs-next-btn"
                             type="button"
-                            disabled
-                        >
+                            disabled>
                             Sau →
                         </button>
                     </div>
                 </div>
 
                 <p class="form-note">
-                    Nguồn dữ liệu: logs/backup.log. Nhật ký hệ thống khác với lịch sử commit Git.
+                    Nguồn dữ liệu: logs/backup.log.
+                    Nhật ký hệ thống khác với lịch sử commit Git.
                 </p>
             </section>
         </section>
 
-        <!-- GIT HISTORY -->
+        <!-- ==================== GIT HISTORY ==================== -->
         <section class="page" id="page-git">
+
             <div class="section-intro">
                 <div>
                     <h2>Lịch sử Git</h2>
@@ -444,10 +529,12 @@
             </section>
         </section>
 
+        <!-- FOOTER -->
         <footer class="footer">
             <span>NetBackup · Network Configuration Backup System</span>
             <span>Dashboard data from local project</span>
         </footer>
+
     </main>
 </div>
 
