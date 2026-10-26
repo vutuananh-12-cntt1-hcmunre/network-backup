@@ -1,0 +1,456 @@
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetBackup | Network Management</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="app">
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-icon">N</div>
+            <div>
+                <h2>NetBackup</h2>
+                <span>NETWORK MANAGEMENT</span>
+            </div>
+        </div>
+
+        <p class="menu-label">WORKSPACE</p>
+
+        <nav class="navigation">
+            <a href="#dashboard" class="nav-link active" data-page="dashboard">
+                <span>▦</span> Dashboard
+            </a>
+            <a href="#devices" class="nav-link" data-page="devices">
+                <span>▤</span> Thiết bị mạng
+            </a>
+            <a href="#backups" class="nav-link" data-page="backups">
+                <span>◷</span> Quản lý Backup
+            </a>
+            <a href="#git" class="nav-link" data-page="git">
+                <span>⌘</span> Lịch sử Git
+            </a>
+            <a href="#logs" class="nav-link" data-page="logs">
+                <span>≡</span> Nhật ký hệ thống
+            </a>
+        </nav>
+
+        <div class="sidebar-bottom">
+            <div class="system-status">
+                <span class="status-dot"></span>
+                <div>
+                    <strong>Web server</strong>
+                    <small id="server-status">Đang kiểm tra...</small>
+                </div>
+            </div>
+            <p>Network Backup System</p>
+            <small>Version 1.0.0</small>
+        </div>
+    </aside>
+
+    <main class="main">
+        <header class="topbar">
+            <div>
+                <p class="breadcrumb">
+                    Workspace / <span id="breadcrumb-page">Dashboard</span>
+                </p>
+                <h1 id="page-title">Dashboard</h1>
+            </div>
+
+            <button class="btn btn-secondary" id="refresh-btn" type="button">
+                ↻ Làm mới dữ liệu
+            </button>
+        </header>
+
+        <div id="error-message" class="error-message" role="alert" hidden></div>
+
+        <!-- DASHBOARD -->
+        <section class="page active" id="page-dashboard">
+            <div class="welcome">
+                <div>
+                    <p class="eyebrow">NETWORK OPERATIONS CENTER</p>
+                    <h2>Tổng quan hệ thống</h2>
+                    <p>Theo dõi thiết bị và trạng thái lưu trữ cấu hình mạng.</p>
+                </div>
+                <div class="welcome-icon">⌁</div>
+            </div>
+
+            <!-- Thống kê tổng quan -->
+            <div class="stats-grid">
+                <article class="stat-card">
+                    <div class="stat-top">
+                        <span>Tổng thiết bị</span>
+                        <span class="stat-icon blue">▤</span>
+                    </div>
+                    <h3 id="total-devices">—</h3>
+                    <p>Thiết bị trong inventory</p>
+                </article>
+
+                <article class="stat-card">
+                    <div class="stat-top">
+                        <span>Đã có bản backup</span>
+                        <span class="stat-icon green">✓</span>
+                    </div>
+                    <h3 id="backed-up">—</h3>
+                    <p>File cấu hình đang được lưu</p>
+                </article>
+
+                <article class="stat-card">
+                    <div class="stat-top">
+                        <span>Chưa backup</span>
+                        <span class="stat-icon orange">!</span>
+                    </div>
+                    <h3 id="not-backed-up">—</h3>
+                    <p>Số thiết bị chưa có file cấu hình backup</p>
+                </article>
+
+                <article class="stat-card">
+                    <div class="stat-top">
+                        <span>Commit gần đây</span>
+                        <span class="stat-icon purple">⌘</span>
+                    </div>
+                    <h3 id="commit-count">—</h3>
+                    <p>Commit backup được tìm thấy</p>
+                </article>
+            </div>
+
+            <!-- Danh sách thiết bị và lịch sử Git -->
+            <div class="content-grid">
+                <section class="panel">
+                    <div class="panel-heading">
+                        <div>
+                            <h3>Thiết bị mạng</h3>
+                            <p>Danh sách thiết bị được cấu hình</p>
+                        </div>
+
+                        <button class="text-btn" data-goto="devices" type="button">
+                            Xem tất cả →
+                        </button>
+                    </div>
+
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                            <tr>
+                                <th>Thiết bị</th>
+                                <th>Địa chỉ IP</th>
+                                <th>Loại thiết bị</th>
+                                <th>Backup</th>
+                            </tr>
+                            </thead>
+                            <tbody id="dashboard-devices">
+                            <tr>
+                                <td colspan="4" class="empty">Đang tải dữ liệu...</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-heading">
+                        <div>
+                            <h3>Lịch sử Git</h3>
+                            <p>Các commit backup gần đây</p>
+                        </div>
+
+                        <button class="text-btn" data-goto="git" type="button">
+                            Chi tiết →
+                        </button>
+                    </div>
+
+                    <div id="dashboard-git" class="git-list">
+                        <p class="empty">Đang tải lịch sử...</p>
+                    </div>
+                </section>
+            </div>
+        </section>
+
+        <!-- DEVICES -->
+        <section class="page" id="page-devices">
+            <div class="section-intro">
+                <div>
+                    <h2>Danh sách thiết bị</h2>
+                    <p>Dữ liệu đọc từ inventory.json và thư mục backups.</p>
+                </div>
+            </div>
+
+            <section class="panel">
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>Tên thiết bị</th>
+                            <th>Địa chỉ IP</th>
+                            <th>Loại</th>
+                            <th>Trạng thái file backup</th>
+                            <th>Cập nhật file</th>
+                        </tr>
+                        </thead>
+                        <tbody id="all-devices">
+                        <tr>
+                            <td colspan="5" class="empty">Đang tải dữ liệu...</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </section>
+
+        <!-- BACKUPS -->
+        <section class="page" id="page-backups">
+            <div class="section-intro">
+                <div>
+                    <h2>Quản lý bản sao lưu</h2>
+                    <p>Chạy sao lưu cấu hình thiết bị qua SSH và theo dõi kết quả.</p>
+                </div>
+            </div>
+
+            <section class="panel backup-control-panel">
+                <div class="panel-heading">
+                    <div>
+                        <h3>Chạy Live Backup</h3>
+                        <p>Kết nối SSH đến các thiết bị trong inventory.json.</p>
+                    </div>
+                    <span id="backup-status-pill" class="pill">Chưa chạy</span>
+                </div>
+
+                <form id="backup-form" class="backup-form">
+                    <div class="form-field">
+                        <label for="ssh-username">SSH Username</label>
+                        <input
+                            id="ssh-username"
+                            name="username"
+                            type="text"
+                            autocomplete="username"
+                            placeholder="Nhập tài khoản SSH"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-field">
+                        <label for="ssh-password">SSH Password</label>
+                        <input
+                            id="ssh-password"
+                            name="password"
+                            type="password"
+                            autocomplete="current-password"
+                            placeholder="Nhập mật khẩu SSH"
+                            required
+                        >
+                    </div>
+
+                    <div class="backup-actions">
+                        <button
+                            type="submit"
+                            class="btn btn-primary"
+                            id="start-backup-btn"
+                        >
+                            ▶ Bắt đầu Live Backup
+                        </button>
+                    </div>
+                </form>
+
+                <p class="form-note">
+                    Chỉ sử dụng trên máy tính đáng tin cậy. Mật khẩu không được
+                    lưu vào inventory.json hoặc hiển thị trong kết quả backup.
+                </p>
+
+                <div id="backup-progress" class="backup-progress" hidden>
+                    <span class="progress-spinner"></span>
+                    <span>Đang thực hiện backup. Vui lòng chờ...</span>
+                </div>
+
+                <section class="backup-result">
+                    <h3>Kết quả lần chạy gần nhất</h3>
+
+                    <div class="backup-summary-grid">
+                        <article class="backup-summary-item">
+                            <span>Trạng thái</span>
+                            <strong id="backup-result-status">Chưa có dữ liệu</strong>
+                        </article>
+
+                        <article class="backup-summary-item">
+                            <span>Thành công</span>
+                            <strong id="backup-success-count">0</strong>
+                        </article>
+
+                        <article class="backup-summary-item">
+                            <span>Thất bại</span>
+                            <strong id="backup-failed-count">0</strong>
+                        </article>
+
+                        <article class="backup-summary-item">
+                            <span>Tổng thiết bị</span>
+                            <strong id="backup-total-count">0</strong>
+                        </article>
+                    </div>
+
+                    <p id="backup-error" class="backup-error" hidden></p>
+
+                    <label for="backup-output">Chi tiết xử lý</label>
+                    <pre id="backup-output" class="backup-output">Chưa có lượt backup nào được thực hiện.</pre>
+
+                    <div class="backup-times">
+                        <p>Thời điểm bắt đầu: <span id="backup-started-at">—</span></p>
+                        <p>Thời điểm kết thúc: <span id="backup-finished-at">—</span></p>
+                    </div>
+                </section>
+            </section>
+
+            <section class="panel">
+                <div class="panel-heading">
+                    <div>
+                        <h3>Các bản backup hiện có</h3>
+                        <p>Đường dẫn tương đối trong dự án</p>
+                    </div>
+                </div>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>Thiết bị</th>
+                            <th>Đường dẫn file</th>
+                            <th>Thời gian sửa file</th>
+                            <th>Trạng thái</th>
+                        </tr>
+                        </thead>
+                        <tbody id="backup-devices">
+                        <tr>
+                            <td colspan="4" class="empty">Đang tải dữ liệu...</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </section>
+
+        <!-- SYSTEM LOGS -->
+        <section class="page" id="page-logs">
+            <div class="section-intro">
+                <div>
+                    <h2>Nhật ký hệ thống</h2>
+                    <p>Theo dõi hoạt động backup và các thông báo INFO, WARNING, ERROR từ backup.log.</p>
+                </div>
+            </div>
+
+            <section class="panel">
+                <div class="panel-heading">
+                    <div>
+                        <h3>Nhật ký hoạt động</h3>
+                        <p id="logs-summary">Đang tải nhật ký...</p>
+                    </div>
+
+                    <button class="btn btn-secondary" id="logs-refresh-btn" type="button">
+                        ↻ Làm mới nhật ký
+                    </button>
+                </div>
+
+                <div class="logs-toolbar">
+                    <div class="form-field">
+                        <label for="logs-level">Mức độ</label>
+                        <select id="logs-level">
+                            <option value="ALL">Tất cả mức độ</option>
+                            <option value="INFO">INFO</option>
+                            <option value="WARNING">WARNING</option>
+                            <option value="ERROR">ERROR</option>
+                        </select>
+                    </div>
+
+                    <div class="form-field logs-search-field">
+                        <label for="logs-search">Tìm kiếm</label>
+                        <input
+                            id="logs-search"
+                            type="search"
+                            placeholder="Nhập từ khóa cần tìm..."
+                        >
+                    </div>
+
+                    <button class="btn btn-primary" id="logs-search-btn" type="button">
+                        Tìm kiếm
+                    </button>
+                </div>
+
+                <div class="logs-counts" id="logs-counts">
+                    <span class="log-count">INFO: —</span>
+                    <span class="log-count">WARNING: —</span>
+                    <span class="log-count">ERROR: —</span>
+                </div>
+
+                <div class="table-wrap logs-table-wrap">
+                    <table class="logs-table">
+                        <thead>
+                        <tr>
+                            <th>Thời gian</th>
+                            <th>Mức độ</th>
+                            <th>Nội dung</th>
+                        </tr>
+                        </thead>
+                        <tbody id="logs-table-body">
+                        <tr>
+                            <td colspan="3" class="empty">Đang tải nhật ký...</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="logs-pagination">
+                    <span id="logs-page-info">Trang — / —</span>
+
+                    <div class="logs-pagination-actions">
+                        <button
+                            class="btn btn-secondary"
+                            id="logs-prev-btn"
+                            type="button"
+                            disabled
+                        >
+                            ← Trước
+                        </button>
+
+                        <button
+                            class="btn btn-secondary"
+                            id="logs-next-btn"
+                            type="button"
+                            disabled
+                        >
+                            Sau →
+                        </button>
+                    </div>
+                </div>
+
+                <p class="form-note">
+                    Nguồn dữ liệu: logs/backup.log. Nhật ký hệ thống khác với lịch sử commit Git.
+                </p>
+            </section>
+        </section>
+
+        <!-- GIT HISTORY -->
+        <section class="page" id="page-git">
+            <div class="section-intro">
+                <div>
+                    <h2>Lịch sử Git</h2>
+                    <p>Theo dõi các commit liên quan đến thư mục backups/.</p>
+                </div>
+            </div>
+
+            <section class="panel">
+                <div id="all-git" class="git-list">
+                    <p class="empty">Đang tải lịch sử...</p>
+                </div>
+            </section>
+        </section>
+
+        <footer class="footer">
+            <span>NetBackup · Network Configuration Backup System</span>
+            <span>Dashboard data from local project</span>
+        </footer>
+    </main>
+</div>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

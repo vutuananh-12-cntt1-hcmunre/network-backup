@@ -9,7 +9,15 @@ from getpass import getpass
 from pathlib import Path
 
 from netmiko import ConnectHandler
+from netmiko.exceptions import (
+    NetmikoAuthenticationException,
+    NetmikoTimeoutException,
+)
 
+
+# =========================================================
+# 1. CAU HINH DUONG DAN
+# =========================================================
 
 BASE_DIR = Path(__file__).resolve().parent
 INVENTORY_FILE = BASE_DIR / "inventory.json"
@@ -28,6 +36,10 @@ logging.basicConfig(
 )
 
 
+# =========================================================
+# 2. CAC HAM HO TRO
+# =========================================================
+
 def safe_name(name):
     """Loai bo ky tu khong phu hop trong ten file."""
     return re.sub(r"[^a-zA-Z0-9_.-]", "_", name)
@@ -41,6 +53,7 @@ def run_git(*args):
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
         check=True,
     )
 
@@ -49,7 +62,7 @@ def initialize_git():
     """Khoi tao Git neu repository chua ton tai."""
     if not (BASE_DIR / ".git").exists():
         run_git("init")
-        print("Da khoi tao Git repository.")
+        print("Đã khởi tạo kho lưu trữ Git.")
 
 
 def load_inventory():
@@ -58,32 +71,102 @@ def load_inventory():
         devices = json.load(file)
 
     if not isinstance(devices, list):
-        raise ValueError("Inventory phai la mot danh sach JSON.")
+        raise ValueError(
+            "Dữ liệu inventory.json phải là một danh sách JSON."
+        )
 
     for device in devices:
         if not isinstance(device, dict):
-            raise ValueError("Moi thiet bi phai la mot JSON object.")
+            raise ValueError(
+                "Mỗi thiết bị trong inventory phải là một đối tượng JSON."
+            )
 
         for field in ("name", "host", "device_type"):
             if not device.get(field):
-                raise ValueError(f"Thiet bi thieu truong {field}: {device}")
+                raise ValueError(
+                    f"Thiết bị thiếu trường bắt buộc: {field}."
+                )
 
     return devices
 
+
+def translate_ssh_error(error):
+    """
+    Chuyen loi SSH thanh thong bao tieng Viet de hieu.
+    Chi dung thong bao sai thong tin dang nhap khi co
+    dau hieu loi xac thuc.
+    """
+    if isinstance(error, NetmikoAuthenticationException):
+        return (
+            "Xác thực SSH thất bại. "
+            "Vui lòng kiểm tra tên đăng nhập và mật khẩu."
+        )
+
+    if isinstance(error, NetmikoTimeoutException):
+        return (
+            "Kết nối SSH hết thời gian chờ. "
+            "Vui lòng kiểm tra trạng thái thiết bị, địa chỉ IP, "
+            "cổng SSH và kết nối mạng."
+        )
+
+    error_text = str(error).lower()
+
+    if "authentication failed" in error_text:
+        return (
+            "Xác thực SSH thất bại. "
+            "Vui lòng kiểm tra tên đăng nhập và mật khẩu."
+        )
+
+    if "connection refused" in error_text:
+        return (
+            "Thiết bị từ chối kết nối SSH. "
+            "Vui lòng kiểm tra dịch vụ SSH trên thiết bị."
+        )
+
+    if "no route to host" in error_text:
+        return (
+            "Không tìm được đường kết nối đến thiết bị. "
+            "Vui lòng kiểm tra cấu hình mạng."
+        )
+
+    if "connection reset" in error_text:
+        return (
+            "Kết nối đến thiết bị bị ngắt đột ngột. "
+            "Vui lòng kiểm tra thiết bị và kết nối mạng."
+        )
+
+    return (
+        "Không thể kết nối hoặc lấy cấu hình từ thiết bị. "
+        "Vui lòng kiểm tra nhật ký để biết thêm chi tiết."
+    )
+
+
+# =========================================================
+# 3. LAY CAU HINH DEMO
+# =========================================================
 
 def get_demo_config(device):
     """Doc cau hinh mau, khong ket noi SSH."""
     config_file = DEMO_DIR / f"{safe_name(device['name'])}.cfg"
 
     if not config_file.is_file():
-        raise FileNotFoundError(f"Khong tim thay file cau hinh mau: {config_file}")
+        raise FileNotFoundError(
+            f"Không tìm thấy file cấu hình mẫu: {config_file.name}"
+        )
 
     config = config_file.read_text(encoding="utf-8")
+
     if not config.strip():
-        raise ValueError(f"File cau hinh mau rong: {config_file}")
+        raise ValueError(
+            f"File cấu hình mẫu đang trống: {config_file.name}"
+        )
 
     return config.rstrip() + "\n"
 
+
+# =========================================================
+# 4. LAY CAU HINH THIET BI QUA SSH
+# =========================================================
 
 def get_live_config(device, username, password):
     """Lay cau hinh tu thiet bi Cisco hoac Juniper."""
@@ -94,7 +177,9 @@ def get_live_config(device, username, password):
     elif device_type.startswith("cisco_"):
         command = "show running-config"
     else:
-        raise ValueError(f"Device type chua duoc ho tro: {device_type}")
+        raise ValueError(
+            f"Loại thiết bị chưa được hỗ trợ: {device_type}"
+        )
 
     connection_params = {
         "device_type": device_type,
@@ -107,24 +192,49 @@ def get_live_config(device, username, password):
         "fast_cli": False,
     }
 
-    connection = ConnectHandler(**connection_params)
+    connection = None
+
     try:
-        output = connection.send_command(command, read_timeout=60)
+        connection = ConnectHandler(**connection_params)
+
+        output = connection.send_command(
+            command,
+            read_timeout=60,
+        )
+
         if not output.strip():
-            raise RuntimeError("Thiet bi tra ve cau hinh rong.")
+            raise RuntimeError(
+                "Thiết bị không trả về nội dung cấu hình."
+            )
 
         error_markers = (
             "% Invalid input",
             "% Authorization failed",
             "error: syntax error",
         )
+
         if any(marker in output for marker in error_markers):
-            raise RuntimeError("Lenh lay cau hinh co the da that bai.")
+            raise RuntimeError(
+                "Thiết bị từ chối lệnh lấy cấu hình "
+                "hoặc lệnh không hợp lệ."
+            )
 
         return output.rstrip() + "\n"
-    finally:
-        connection.disconnect()
 
+    finally:
+        if connection is not None:
+            try:
+                connection.disconnect()
+            except Exception:
+                logging.warning(
+                    "Không thể đóng kết nối SSH tới thiết bị %s",
+                    device.get("name", "không xác định"),
+                )
+
+
+# =========================================================
+# 5. KET NOI VA THU THAP THONG TIN LINUX
+# =========================================================
 
 def get_linux_info(host, username, password):
     """Ket noi SSH den Linux va thu thap thong tin he thong."""
@@ -144,17 +254,22 @@ def get_linux_info(host, username, password):
         ip_addresses = connection.send_command("hostname -I")
 
     if not hostname.strip():
-        raise RuntimeError("Khong lay duoc hostname.")
+        raise RuntimeError("Không lấy được tên máy Linux.")
+
     if not system_info.strip():
-        raise RuntimeError("Khong lay duoc thong tin he thong.")
+        raise RuntimeError("Không lấy được thông tin hệ thống Linux.")
 
     return (
-        f"Hostname: {hostname.strip()}\n"
-        f"Host: {host}\n"
-        f"System: {system_info.strip()}\n"
-        f"IP addresses: {ip_addresses.strip()}\n"
+        f"Tên máy: {hostname.strip()}\n"
+        f"Địa chỉ máy: {host}\n"
+        f"Hệ điều hành: {system_info.strip()}\n"
+        f"Địa chỉ IP: {ip_addresses.strip()}\n"
     )
 
+
+# =========================================================
+# 6. LUU VA SO SANH FILE BACKUP
+# =========================================================
 
 def save_config(device, config, mode):
     """Doc ban backup cu truoc khi ghi ban moi."""
@@ -170,120 +285,189 @@ def save_config(device, config, mode):
 
     filename = f"{safe_name(device['name'])}.cfg"
     file_path = device_dir / filename
-    old_config = file_path.read_text(encoding="utf-8") if file_path.exists() else None
+
+    old_config = (
+        file_path.read_text(encoding="utf-8")
+        if file_path.exists()
+        else None
+    )
 
     file_path.write_text(config, encoding="utf-8")
+
     return file_path, old_config
 
 
 def show_diff(old_config, new_config, filename):
     """So sanh noi dung backup cu va moi."""
     if old_config is None:
-        print("Lan dau sao luu: chua co ban cu de so sanh.")
+        print("Đây là lần sao lưu đầu tiên; chưa có bản cũ để so sánh.")
         return True
 
     diff = list(
         unified_diff(
             old_config.splitlines(),
             new_config.splitlines(),
-            fromfile=f"{filename} (cu)",
-            tofile=f"{filename} (moi)",
+            fromfile=f"{filename} (bản cũ)",
+            tofile=f"{filename} (bản mới)",
             lineterm="",
         )
     )
 
     if diff:
+        print("Phát hiện thay đổi trong cấu hình:")
         print("\n".join(diff))
         return True
 
-    print("Khong phat hien thay doi.")
+    print("Không phát hiện thay đổi trong cấu hình.")
     return False
 
+
+# =========================================================
+# 7. QUAN LY GIT
+# =========================================================
 
 def commit_backups():
     """Chi commit cac thay doi trong thu muc backups/."""
     run_git("add", "-A", "--", "backups/")
 
     result = subprocess.run(
-        ["git", "diff", "--cached", "--quiet", "--", "backups/"],
+        [
+            "git",
+            "diff",
+            "--cached",
+            "--quiet",
+            "--",
+            "backups/",
+        ],
         cwd=BASE_DIR,
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
     )
 
     if result.returncode == 0:
-        print("Git: khong co thay doi backup moi.")
+        print("Git: Không có thay đổi backup mới.")
         return
 
     if result.returncode != 1:
-        detail = result.stderr.strip() or "Khong ro nguyen nhan."
-        raise RuntimeError(f"Khong the kiem tra thay doi Git: {detail}")
+        detail = result.stderr.strip() or "Không xác định được nguyên nhân."
+        raise RuntimeError(
+            f"Không thể kiểm tra thay đổi Git: {detail}"
+        )
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    run_git("commit", "-m", f"Network backup {timestamp}", "--", "backups/")
-    print("Git: da commit cac thay doi backup.")
 
+    run_git(
+        "commit",
+        "-m",
+        f"Network backup {timestamp}",
+        "--",
+        "backups/",
+    )
+
+    print("Git: Đã lưu commit cho các thay đổi backup.")
+
+
+# =========================================================
+# 8. KIEM THU SSH LINUX
+# =========================================================
 
 def run_linux_test(host):
     """Kiem tra SSH Linux, luu thong tin va so sanh diff."""
-    username = input("SSH username: ").strip()
-    password = getpass("SSH password: ")
+    username = input("Tên đăng nhập SSH: ").strip()
+    password = getpass("Mật khẩu SSH: ")
 
     if not username or not password:
-        print("Kiem thu that bai: Username va password khong duoc de trong.")
+        print("Kiểm thử thất bại: Không được để trống tên đăng nhập hoặc mật khẩu.")
         return
 
-    print(f"\nDang ket noi SSH den Linux: {host}...")
+    print(f"\nĐang kết nối SSH đến máy Linux {host}...")
+
     try:
         config = get_linux_info(host, username, password)
-        device = {"name": "Lubuntu", "host": host, "device_type": "linux"}
-        file_path, old_config = save_config(device, config, "linux-test")
+
+        device = {
+            "name": "Lubuntu",
+            "host": host,
+            "device_type": "linux",
+        }
+
+        file_path, old_config = save_config(
+            device,
+            config,
+            "linux-test",
+        )
 
         changed = show_diff(
             old_config,
             config,
             str(file_path.relative_to(BASE_DIR)),
         )
-        logging.info("LINUX_TEST host=%s changed=%s", host, changed)
-        print(f"\nDa luu: {file_path.relative_to(BASE_DIR)}")
+
+        logging.info(
+            "LINUX_TEST host=%s changed=%s",
+            host,
+            changed,
+        )
+
+        print(f"\nĐã lưu bản backup: {file_path.relative_to(BASE_DIR)}")
 
         try:
             commit_backups()
-        except Exception as git_error:
+        except Exception:
             logging.exception("Git commit failed during Linux test")
-            print(f"LOI GIT: Khong the commit backup: {git_error}")
-            print("Hay kiem tra git status va cau hinh Git user.")
+            print("Lỗi Git: Không thể lưu commit backup.")
+            print("Vui lòng kiểm tra trạng thái Git và cấu hình người dùng Git.")
+
     except Exception as error:
         logging.exception("Linux SSH test failed: host=%s", host)
-        print("\nKIEM THU THAT BAI: Khong the ket noi hoac thu thap thong tin Linux.")
-        print(f"Chi tiet: {error}")
-        print("Khong tao ban backup moi tu lan ket noi that bai.")
 
+        print("\nKIỂM THỬ THẤT BẠI")
+        print(translate_ssh_error(error))
+        print(f"Chi tiết kỹ thuật: {type(error).__name__}: {error}")
+        print("Không tạo bản backup mới từ lần kết nối thất bại.")
+
+
+# =========================================================
+# 9. QUY TRINH BACKUP CHINH
+# =========================================================
 
 def run_backup(mode, devices, username=None, password=None):
     """Chay quy trinh backup cho danh sach thiet bi."""
     success_count = 0
     failed_count = 0
-    print(f"\nChe do: {mode.upper()}")
+
+    print(f"\nChế độ: {mode.upper()}")
 
     for device in devices:
         name = device["name"]
         host = device["host"]
-        print(f"\nDang sao luu {name} ({host})...")
+
+        print(f"\nĐang sao lưu {name} ({host})...")
 
         try:
             if mode == "demo":
                 config = get_demo_config(device)
             else:
-                config = get_live_config(device, username, password)
+                config = get_live_config(
+                    device,
+                    username,
+                    password,
+                )
 
-            file_path, old_config = save_config(device, config, mode)
+            file_path, old_config = save_config(
+                device,
+                config,
+                mode,
+            )
+
             changed = show_diff(
                 old_config,
                 config,
                 str(file_path.relative_to(BASE_DIR)),
             )
+
             logging.info(
                 "SUCCESS mode=%s device=%s host=%s changed=%s",
                 mode,
@@ -291,39 +475,78 @@ def run_backup(mode, devices, username=None, password=None):
                 host,
                 changed,
             )
-            print(f"Da luu: {file_path.relative_to(BASE_DIR)}")
+
+            print(f"Đã lưu: {file_path.relative_to(BASE_DIR)}")
             success_count += 1
+
         except Exception as error:
-            logging.exception("FAILED mode=%s device=%s host=%s", mode, name, host)
-            print(f"LOI {name}: {error}")
+            logging.exception(
+                "FAILED mode=%s device=%s host=%s",
+                mode,
+                name,
+                host,
+            )
+
+            print(f"Sao lưu thất bại: {name}")
+
+            if mode == "live":
+                print(translate_ssh_error(error))
+                print(
+                    f"Chi tiết kỹ thuật: "
+                    f"{type(error).__name__}: {error}"
+                )
+            else:
+                print(f"Nguyên nhân: {error}")
+
             failed_count += 1
 
     try:
         commit_backups()
-    except Exception as error:
+
+    except Exception:
         logging.exception("Git commit failed")
-        print(f"LOI GIT: {error}")
-        print("Hay kiem tra git status va cau hinh Git user.")
+        print("Lỗi Git: Không thể lưu commit backup.")
+        print("Vui lòng kiểm tra trạng thái Git và cấu hình người dùng Git.")
 
-    print("\n===== KET QUA SAO LUU =====")
+    print("\n===== KẾT QUẢ SAO LƯU =====")
+    # Giu nguyen cac nhan nay de web_app.py doc duoc ket qua.
     print(f"Thanh cong: {success_count}")
-    print(f"That bai:   {failed_count}")
-    print(f"Tong cong:  {len(devices)}")
+    print(f"That bai: {failed_count}")
+    print(f"Tổng số thiết bị: {len(devices)}")
 
+    return {
+        "success_count": success_count,
+        "failed_count": failed_count,
+        "total_count": len(devices),
+    }
+
+
+# =========================================================
+# 10. HAM MAIN
+# =========================================================
 
 def main():
-    parser = argparse.ArgumentParser(description="Network Backup and Inventory")
+    parser = argparse.ArgumentParser(
+        description="Hệ thống sao lưu cấu hình và quản lý thiết bị mạng"
+    )
+
     parser.add_argument(
         "--mode",
         choices=["demo", "live", "linux-test"],
         default="demo",
-        help="demo: file mau; live: Cisco/Juniper; linux-test: kiem tra Linux qua SSH",
+        help=(
+            "demo: dùng file mẫu; "
+            "live: sao lưu Cisco/Juniper qua SSH; "
+            "linux-test: kiểm thử SSH Linux"
+        ),
     )
+
     parser.add_argument(
         "--host",
         default="192.168.234.131",
-        help="IP cua may Linux dung de kiem thu SSH",
+        help="Địa chỉ IP máy Linux dùng để kiểm thử SSH",
     )
+
     args = parser.parse_args()
 
     initialize_git()
@@ -337,12 +560,20 @@ def main():
     password = None
 
     if args.mode == "live":
-        username = input("SSH username: ").strip()
-        password = getpass("SSH password: ")
-        if not username or not password:
-            raise ValueError("Username va password khong duoc de trong.")
+        username = input("Tên đăng nhập SSH: ").strip()
+        password = getpass("Mật khẩu SSH: ")
 
-    run_backup(args.mode, devices, username, password)
+        if not username or not password:
+            raise ValueError(
+                "Không được để trống tên đăng nhập hoặc mật khẩu SSH."
+            )
+
+    run_backup(
+        args.mode,
+        devices,
+        username,
+        password,
+    )
 
 
 if __name__ == "__main__":
@@ -350,4 +581,5 @@ if __name__ == "__main__":
         main()
     except Exception as error:
         logging.exception("Chuong trinh dung do loi")
-        print(f"Chuong trinh dung: {error}")
+        print("\nChương trình không thể tiếp tục.")
+        print(f"Chi tiết: {type(error).__name__}: {error}")
